@@ -1,0 +1,562 @@
+{
+  "name": "Productivity_report_automation",
+  "nodes": [
+    {
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyMinute"
+            }
+          ]
+        },
+        "documentId": {
+          "__rl": true,
+          "value": "1pCpPyRRMhlnRPd0i-0tBYxgOkgGYQa7Vok43RMQQ_5w",
+          "mode": "list",
+          "cachedResultName": "Performance Tracker Report (Responses)",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1pCpPyRRMhlnRPd0i-0tBYxgOkgGYQa7Vok43RMQQ_5w/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1058857979,
+          "mode": "list",
+          "cachedResultName": "Form responses 1",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1pCpPyRRMhlnRPd0i-0tBYxgOkgGYQa7Vok43RMQQ_5w/edit#gid=1058857979"
+        },
+        "event": "rowAdded",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheetsTrigger",
+      "typeVersion": 1,
+      "position": [
+        -512,
+        -80
+      ],
+      "id": "e2a9c45c-0b10-45ad-b1df-ddd9c47e75da",
+      "name": "Google Sheets Trigger",
+      "credentials": {
+        "googleSheetsTriggerOAuth2Api": {
+          "id": "YmvcoagHZRcycITU",
+          "name": "Google Sheets Trigger account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "f4c06154-cf69-4dcd-a518-deee6de066af",
+              "leftValue": "={{ $json[\"Productivity Report\"] && $json[\"Productivity Report\"].includes(\"drive.google.com\") }}",
+              "rightValue": "",
+              "operator": {
+                "type": "number",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -208,
+        -80
+      ],
+      "id": "c452ba2d-bad8-458a-82f8-1b338468e0cf",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "operation": "download",
+        "fileId": {
+          "__rl": true,
+          "value": "={{ $('Sort').item.json['Productivity Report'].match(/[-\\w]{25,}/)[0]  }} ",
+          "mode": "id"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        448,
+        -144
+      ],
+      "id": "97aa5cec-aff7-45b1-a299-5005e36a5d80",
+      "name": "Download file",
+      "credentials": {
+        "googleDriveOAuth2Api": {
+          "id": "hjxiu2Y6DyaY5BiG",
+          "name": "Google Drive account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "27fc2fd1-4d75-486b-a220-2b3b9e71961c",
+              "leftValue": "={{ $binary.data.fileName && $binary.data.fileName.toLowerCase().endsWith(\".csv\") }}\n",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        704,
+        -144
+      ],
+      "id": "06dc02a5-4817-4fc4-ae0e-4b9619a97280",
+      "name": "If1"
+    },
+    {
+      "parameters": {
+        "options": {
+          "headerRow": true
+        }
+      },
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        1040,
+        -272
+      ],
+      "id": "d6827ea4-eab9-4515-8912-6463814f9f46",
+      "name": "Extract from File"
+    },
+    {
+      "parameters": {
+        "jsCode": "\n\n// Get all CSV rows\nconst rows = items.map(item => item.json);\n\n// Helper to safely parse numbers\nfunction num(v) {\n  const n = parseFloat(v);\n  return isNaN(n) ? 0 : n;\n}\n\n// Create pivot summary\nconst pivot = {}; // { WorkLocation: { Status: totalLength, ... } }\n\nfor (const r of rows) {\n  const location = (r[\"Recorder\"] || \"Unknown\").trim();  // You can switch to \"Work Location\"\n  const status = (r[\"Status\"] || \"Unknown\").trim();\n  const length = num(r[\"Length (Min)\"]);\n\n  if (!pivot[location]) pivot[location] = {};\n  pivot[location][status] = (pivot[location][status] || 0) + length;\n}\n\n// Prepare data for Google Sheet\nconst sheetRows = [];\n\nfor (const [location, statuses] of Object.entries(pivot)) {\n  const accepted = statuses[\"Accepted\"] || 0;\n  const pending = statuses[\"Pending\"] || 0;\n  const rejected = statuses[\"Rejected\"] || 0;\n  const total = accepted + pending + rejected;\n\n  sheetRows.push({\n    \"Recorder\": location,\n    \"Accepted\": parseFloat(accepted.toFixed(2)),\n    \"Pending\": parseFloat(pending.toFixed(2)),\n    \"Rejected\": parseFloat(rejected.toFixed(2)),\n    \"Grand Total\": parseFloat(total.toFixed(2))\n  });\n}\n\n// Add a header row if needed\nreturn sheetRows.map(r => ({ json: r }));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1248,
+        -272
+      ],
+      "id": "95bca097-6356-4d9b-af00-a7fbb47e6f06",
+      "name": "Code"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1pCpPyRRMhlnRPd0i-0tBYxgOkgGYQa7Vok43RMQQ_5w",
+          "mode": "list",
+          "cachedResultName": "Performance Tracker Report (Responses)",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1pCpPyRRMhlnRPd0i-0tBYxgOkgGYQa7Vok43RMQQ_5w/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "=Productivity_Report_{{ $now.toFormat(\"yyyyMMdd_HHmm\") }}",
+          "mode": "name"
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Recorder",
+              "displayName": "Recorder",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Accepted",
+              "displayName": "Accepted",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Pending",
+              "displayName": "Pending",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Rejected",
+              "displayName": "Rejected",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "Grand Total",
+              "displayName": "Grand Total",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1728,
+        -272
+      ],
+      "id": "20a709d7-2d89-4478-a8b6-74caa0c0aaae",
+      "name": "Append row in sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "lTcqn5DTKzHjTgtp",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "create",
+        "documentId": {
+          "__rl": true,
+          "value": "1pCpPyRRMhlnRPd0i-0tBYxgOkgGYQa7Vok43RMQQ_5w",
+          "mode": "list",
+          "cachedResultName": "Performance Tracker Report (Responses)",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1pCpPyRRMhlnRPd0i-0tBYxgOkgGYQa7Vok43RMQQ_5w/edit?usp=drivesdk"
+        },
+        "title": "=Productivity_Report_{{ $now.toFormat(\"yyyyMMdd_HHmm\") }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        1440,
+        -352
+      ],
+      "id": "1ce13e51-3071-4654-8f2e-79eeb71fc0bb",
+      "name": "Create sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "lTcqn5DTKzHjTgtp",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sendTo": "shivamyadavsm09@gmail.com",
+        "subject": "Productivity report",
+        "emailType": "text",
+        "message": "=✅ New Productivity Report generated!  Sheet created: {{ $json.title }} Open it here: {{ $json[\"spreadsheetUrl\"] }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        2304,
+        -432
+      ],
+      "id": "d4994143-936a-4d92-bfac-50727759027b",
+      "name": "Send a message",
+      "webhookId": "342b0c35-b80a-4e17-800c-09588b1cedab",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "0WDu8NJZWF3uR1xV",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "return items.map(item => {\n  item.json.spreadsheetUrl = `https://docs.google.com/spreadsheets/d/${item.json.spreadsheetId}/edit#gid=${item.json.sheetId}`;\n  return item;\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1888,
+        -432
+      ],
+      "id": "533d0855-ef8c-42fb-b886-4297652e41e3",
+      "name": "Code1"
+    },
+    {
+      "parameters": {
+        "sendTo": "shivamyadavsm09@gmail.com",
+        "subject": "File format error",
+        "message": "Please upload the file in csv format.",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        1040,
+        -80
+      ],
+      "id": "9b20e7e1-524e-4f07-aa03-ac3d8b6abc9f",
+      "name": "Send a message2",
+      "webhookId": "09e65d25-0d16-4b3d-a573-a7c5c23c9dfc",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "0WDu8NJZWF3uR1xV",
+          "name": "Gmail account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sortFieldsUi": {
+          "sortField": [
+            {
+              "fieldName": "Timestamp",
+              "order": "descending"
+            }
+          ]
+        },
+        "options": {
+          "disableDotNotation": false
+        }
+      },
+      "type": "n8n-nodes-base.sort",
+      "typeVersion": 1,
+      "position": [
+        0,
+        -176
+      ],
+      "id": "f3b15fb6-dd5f-43db-9896-6d1c4f783f38",
+      "name": "Sort"
+    },
+    {
+      "parameters": {
+        "batchSize": "={{ 1 }}",
+        "options": {
+          "reset": false
+        }
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        208,
+        -176
+      ],
+      "id": "1a214d72-f768-4638-9ee8-a46cc77f2815",
+      "name": "Loop Over Items"
+    },
+    {
+      "parameters": {
+        "sendTo": "shivamyadavsm09@gmail.com",
+        "subject": "File missing",
+        "message": "Please upload the report file.",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        416,
+        16
+      ],
+      "id": "5b4bff94-4c78-4ca8-a450-8bb6b2b05421",
+      "name": "Send a message1",
+      "webhookId": "81745476-28fa-496a-952d-929a298a2fbb",
+      "credentials": {
+        "gmailOAuth2": {
+          "id": "0WDu8NJZWF3uR1xV",
+          "name": "Gmail account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Google Sheets Trigger": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Sort",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send a message1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Download file": {
+      "main": [
+        [
+          {
+            "node": "If1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If1": {
+      "main": [
+        [
+          {
+            "node": "Extract from File",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send a message2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract from File": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "Create sheet",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Append row in sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append row in sheet": {
+      "main": [
+        []
+      ]
+    },
+    "Create sheet": {
+      "main": [
+        [
+          {
+            "node": "Code1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code1": {
+      "main": [
+        [
+          {
+            "node": "Send a message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sort": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Download file",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "saveExecutionProgress": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": "MYbra9Ggkp2CoclE",
+    "timeSavedPerExecution": 20
+  },
+  "versionId": "1aef10a2-1359-40fc-a16e-4eae1788deea",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "f3f8863afcaa133f870a46ec8bea7f5d47d609f96f457ea8cc641deb9fb22d75"
+  },
+  "id": "MYbra9Ggkp2CoclE",
+  "tags": []
+}
